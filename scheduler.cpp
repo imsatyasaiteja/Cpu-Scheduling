@@ -1,3 +1,4 @@
+#include <fstream>
 #include <iostream>
 #include <vector>
 #include <time.h>
@@ -71,6 +72,7 @@ public:
     friend class Scheduler;
     friend class MinHeap;
     friend class Simulator;
+    void friend callAlgo();
 };
 
 class Process_Creator
@@ -131,7 +133,7 @@ private:
         int right = rightChild(parent);
         int smallest = parent;
 
-        if (left < arr->size() && arr->at(left).arrivalTime < arr->at(smallest).arrivalTime)
+        if (left < arr->size() && arr->at(left).arrivalTime <= arr->at(smallest).arrivalTime)
         {
             smallest = left;
         }
@@ -283,6 +285,8 @@ public:
     void runFCFS();
     void runRR();
     void runCFS();
+
+    void friend callAlgo();
 };
 
 void Simulator::Run()
@@ -291,14 +295,15 @@ void Simulator::Run()
 
     if (choice == 1)
     {
-        cout << "\n Hey! FCFS here\n" << endl;
+        cout << "\n Hey! FCFS here\n"
+             << endl;
 
         MinHeap heap(array);
 
         while (!array->empty())
         {
             readyQueue->push_back(array->at(0));
-            heap.pop(); 
+            heap.pop();
         }
 
         while (currentTime < simulationTime)
@@ -417,6 +422,7 @@ void Simulator::runCFS()
 void callAlgo()
 {
     int a;
+    vector<Process> *f;
 
     cout << "\n1) First Come First Serve" << endl;
     cout << "2) Round Robin" << endl;
@@ -437,6 +443,34 @@ void callAlgo()
     Scheduler sch(obj);
     Simulator sim(sch, a);
     sim.Run();
+
+    f = sim.runningQueue;
+
+    std::ofstream output_file("output.txt");
+
+    if(a == 1)
+    {
+        output_file << "\tFCFS : \n";
+    }
+    else if (a == 2)
+    {
+        output_file << "\tRR : \n";
+    }
+    else
+    {
+        output_file << "\tCFS : \n";
+    }
+
+    output_file << "\tID\tAT\tBT\tCT\tTAT\tWT\tRT\n";
+
+    for (int i = 0; i < f->size(); i++)
+    {
+        output_file << "\t" << f->at(i).processId << "\t"
+        << f->at(i).arrivalTime  << "\t" << f->at(i).burstTime << "\t" << f->at(i).completionTime
+        << "\t" << f->at(i).turnAroundTime << "\t" << f->at(i).waitingTime << "\t" << f->at(i).responseTime << "\n";
+    }
+
+    output_file.close(); // Close the file
 
     return;
 }
