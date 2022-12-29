@@ -291,8 +291,6 @@ public:
 
 void Simulator::Run()
 {
-    processNum = 0;
-
     if (choice == 1)
     {
         cout << "\n Hey! FCFS here\n"
@@ -347,11 +345,10 @@ void Simulator::Run()
 
             if (!runningQueue->empty())
             {
-                int i = processNum;
-                if (runningQueue->at(i).leftBurstTime != 0)
+                if (runningQueue->back().leftBurstTime != 0)
                 {
-                    readyQueue->push_back(runningQueue->at(i));
-                    runningQueue->erase(runningQueue->begin() + i);
+                    readyQueue->push_back(runningQueue->back());
+                    runningQueue->erase(runningQueue->end());
                 }
             }
 
@@ -361,6 +358,7 @@ void Simulator::Run()
             {
                 break;
             }
+
         }
     }
     else
@@ -408,7 +406,7 @@ void Simulator::runRR()
         }
         else
         {
-            processNum++;
+            ;
         }
 
         runningQueue->back().setCompletionTime(currentTime);
@@ -450,15 +448,15 @@ void callAlgo()
 
     if(a == 1)
     {
-        output_file << "\tFCFS : \n";
+        output_file << "\n\tFirst Come First Serve : \n\n";
     }
     else if (a == 2)
     {
-        output_file << "\tRR : \n";
+        output_file << "\n\tRound Robin: \n\n";
     }
     else
     {
-        output_file << "\tCFS : \n";
+        output_file << "\n\tCompletely Fair Scheduler : \n\n";
     }
 
     output_file << "\tID\tAT\tBT\tCT\tTAT\tWT\tRT\n";
