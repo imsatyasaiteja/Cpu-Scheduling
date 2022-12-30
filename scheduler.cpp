@@ -2,6 +2,7 @@
 #include <iostream>
 #include <vector>
 #include <time.h>
+#include <random>
 #define Infinity 999999
 int N;
 int simulationTime, currentTime;
@@ -19,6 +20,8 @@ private:
     int waitingTime;
     int responseTime = Infinity;
     int leftBurstTime;
+    int virtualRunTime;
+    int priority;
 
 public:
     Process()
@@ -29,12 +32,14 @@ public:
     {
     }
 
-    Process(int pid, int aTime, int bTime)
+    Process(int pid, int aTime, int bTime, int nice)
     {
         processId = pid;
         arrivalTime = aTime;
         burstTime = bTime;
         leftBurstTime = bTime;
+        priority = 20 - nice;
+        virtualRunTime = priority;
     }
 
     void setCompletionTime(int cTime)
@@ -66,6 +71,7 @@ public:
         cout << " Turn Around Time : " << turnAroundTime << " ms" << endl;
         cout << " Waiting Time : " << waitingTime << " ms" << endl;
         cout << " Response Time : " << responseTime << " ms" << endl;
+        cout << " Priority : " << priority << endl;
     }
 
     friend class Process_Creator;
@@ -89,16 +95,27 @@ public:
         for (int i = 0; i < N; i++)
         {
             int aTime = rand() % 10;
-            int u = 0;
+            int bTime;
 
-            while (u == 0)
+            while (1)
             {
-                u = rand() % 10;
+                bTime = rand() % 10;
+
+                if (bTime != 0)
+                {
+                    break;
+                }
             }
 
-            int bTime = u;
+            int nice;
 
-            array->at(i) = Process(i, aTime, bTime);
+            random_device rd;
+            mt19937 gen(rd());
+            uniform_int_distribution<int> distNice(-20, 19);
+
+            nice = distNice(gen);
+
+            array->at(i) = Process(i, aTime, bTime, nice);
         }
     }
 
@@ -114,20 +131,7 @@ private:
     int rightChild(int parent) { return 2 * parent + 2; }
     int parent(int child) { return (child - 1) / 2; }
 
-    void heapifyUp(int child)
-    {
-        if (child == 0)
-            return;
-
-        int p = parent(child);
-        if (arr->at(p).arrivalTime >= arr->at(child).arrivalTime)
-        {
-            swap(arr->at(p), arr->at(child));
-            heapifyUp(p);
-        }
-    }
-
-    void heapifyDown(int parent)
+    void minHeapify(int parent)
     {
         int left = leftChild(parent);
         int right = rightChild(parent);
@@ -150,7 +154,7 @@ private:
         if (smallest != parent)
         {
             swap(arr->at(smallest), arr->at(parent));
-            heapifyDown(smallest);
+            minHeapify(smallest);
         }
     }
 
@@ -165,7 +169,7 @@ public:
     {
         for (int start = (arr->size() / 2) - 1; start >= 0; --start)
         {
-            heapifyDown(start);
+            minHeapify(start);
         }
     }
 
@@ -175,18 +179,13 @@ public:
     {
         arr->at(0) = arr->back();
         arr->pop_back();
-        heapifyDown(0);
-    }
-
-    void insert(Process key)
-    {
-        arr->push_back(key);
-        heapifyUp(arr->size() - 1);
+        minHeapify(0);
     }
 };
 
 class RedBlackTree
 {
+
 };
 
 class Scheduler
@@ -209,16 +208,16 @@ public:
         array = obj.array;
     }
 
-    static void fcfs(vector<Process> *readyQueue, vector<Process> *runningQueue);
-    static void rr(vector<Process> *readyQueue, vector<Process> *runningQueue);
-    void cfs();
+    void fcfs(vector<Process> *runningQueue);
+    void rr(vector<Process> *runningQueue);
+    void cfs(vector<Process> *runningQueue);
 
     friend class RedBlackTree;
     friend class MinHeap;
     friend class Simulator;
 };
 
-void Scheduler::fcfs(vector<Process> *readyQueue, vector<Process> *runningQueue)
+void Scheduler::fcfs(vector<Process> *runningQueue)
 {
     MinHeap min(readyQueue);
 
@@ -227,7 +226,7 @@ void Scheduler::fcfs(vector<Process> *readyQueue, vector<Process> *runningQueue)
     min.pop();
 }
 
-void Scheduler::rr(vector<Process> *readyQueue, vector<Process> *runningQueue)
+void Scheduler::rr(vector<Process> *runningQueue)
 {
     if (!readyQueue->empty())
     {
@@ -241,7 +240,7 @@ void Scheduler::rr(vector<Process> *readyQueue, vector<Process> *runningQueue)
     }
 }
 
-void Scheduler::cfs()
+void Scheduler::cfs(vector<Process> *runningQueue)
 {
     cout << "\n Hey CFS here" << endl;
 }
@@ -252,8 +251,9 @@ private:
     vector<Process> *array;
     vector<Process> *runningQueue = new vector<Process>();
     vector<Process> *readyQueue;
+    Scheduler *sch;
     int processNum;
-    int timeQuantum;
+    int timeQuantum, timeSlice;
     int choice;
 
     void CaptureValues()
@@ -266,10 +266,11 @@ private:
     }
 
 public:
-    Simulator(Scheduler &sch, int a)
+    Simulator(Scheduler &schObj, int a)
     {
-        readyQueue = sch.readyQueue;
-        array = sch.array;
+        readyQueue = schObj.readyQueue;
+        array = schObj.array;
+        sch = &schObj;
         choice = a;
     }
 
@@ -281,7 +282,25 @@ public:
         }
     }
 
-    void Run();
+    void Run()
+    {
+        if (choice == 1)
+        {
+            runFCFS();
+        }
+        else if (choice == 2)
+        {
+            runRR();
+        }
+        else
+        {
+            runCFS();
+        }
+
+        CaptureValues();
+        printProcesses();
+    }
+
     void runFCFS();
     void runRR();
     void runCFS();
@@ -289,132 +308,172 @@ public:
     void friend callAlgo();
 };
 
-void Simulator::Run()
-{
-    if (choice == 1)
-    {
-        cout << "\n Hey! FCFS here\n"
-             << endl;
-
-        MinHeap heap(array);
-
-        while (!array->empty())
-        {
-            readyQueue->push_back(array->at(0));
-            heap.pop();
-        }
-
-        while (currentTime < simulationTime)
-        {
-            runFCFS();
-
-            if (readyQueue->empty())
-            {
-                break;
-            }
-        }
-    }
-    else if (choice == 2)
-    {
-        cout << "\n Hey! Round Robin Here\n"
-             << endl;
-        cout << " Enter the Time Quantum : ";
-        cin >> timeQuantum;
-
-        MinHeap heap(array);
-
-        if (array->at(0).arrivalTime != 0)
-        {
-            currentTime = array->at(0).arrivalTime;
-        }
-
-        while (currentTime < simulationTime)
-        {
-            while (!array->empty())
-            {
-                if (array->at(0).arrivalTime <= currentTime)
-                {
-                    readyQueue->push_back(array->at(0));
-                    heap.pop();
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            if (!runningQueue->empty())
-            {
-                if (runningQueue->back().leftBurstTime != 0)
-                {
-                    readyQueue->push_back(runningQueue->back());
-                    runningQueue->erase(runningQueue->end());
-                }
-            }
-
-            runRR();
-
-            if (readyQueue->empty() && array->empty())
-            {
-                break;
-            }
-
-        }
-    }
-    else
-    {
-        ;
-    }
-
-    CaptureValues();
-    printProcesses();
-}
-
 void Simulator::runFCFS()
 {
-    Scheduler::fcfs(readyQueue, runningQueue);
+    cout << "\n Hey! FCFS here\n"
+         << endl;
 
-    if (processNum == 0)
+    MinHeap heap(array);
+
+    while (!array->empty())
     {
-        currentTime = runningQueue->at(processNum).arrivalTime;
+        readyQueue->push_back(array->at(0));
+        heap.pop();
     }
 
-    runningQueue->at(processNum).setResponseTime(currentTime);
+    while (currentTime < simulationTime)
+    {
+        sch->fcfs(runningQueue);
 
-    int endTime = currentTime + runningQueue->at(processNum).burstTime;
-    runningQueue->at(processNum).setCompletionTime(endTime);
+        if (processNum == 0)
+        {
+            currentTime = runningQueue->at(processNum).arrivalTime;
+        }
 
-    currentTime = endTime;
-    processNum++;
+        runningQueue->at(processNum).setResponseTime(currentTime);
+
+        int endTime = currentTime + runningQueue->at(processNum).burstTime;
+        runningQueue->at(processNum).setCompletionTime(endTime);
+
+        currentTime = endTime;
+        processNum++;
+
+        if (readyQueue->empty())
+        {
+            break;
+        }
+    }
 }
 
 void Simulator::runRR()
 {
-    Scheduler::rr(readyQueue, runningQueue);
+    cout << "\n Hey! Round Robin Here\n"
+         << endl;
+    cout << " Enter the Time Quantum : ";
+    cin >> timeQuantum;
 
-    if (!runningQueue->empty())
+    MinHeap heap(array);
+
+    if (array->at(0).arrivalTime != 0)
     {
-        if (runningQueue->back().leftBurstTime >= timeQuantum)
+        currentTime = array->at(0).arrivalTime;
+    }
+
+    while (currentTime < simulationTime)
+    {
+        while (!array->empty())
         {
-            currentTime += timeQuantum;
-            runningQueue->back().leftBurstTime -= timeQuantum;
-        }
-        else if (runningQueue->back().leftBurstTime != 0 && runningQueue->back().leftBurstTime < timeQuantum)
-        {
-            currentTime += runningQueue->back().leftBurstTime;
-            runningQueue->back().leftBurstTime = 0;
-        }
-        else
-        {
-            ;
+            if (array->at(0).arrivalTime <= currentTime)
+            {
+                readyQueue->push_back(array->at(0));
+                heap.pop();
+            }
+            else
+            {
+                break;
+            }
         }
 
-        runningQueue->back().setCompletionTime(currentTime);
+        if (!runningQueue->empty() && runningQueue->back().leftBurstTime != 0)
+        {
+            readyQueue->push_back(runningQueue->back());
+            runningQueue->erase(runningQueue->end());
+        }
+
+        sch->rr(runningQueue);
+
+        if (!runningQueue->empty())
+        {
+            if (runningQueue->back().leftBurstTime >= timeQuantum)
+            {
+                currentTime += timeQuantum;
+                runningQueue->back().leftBurstTime -= timeQuantum;
+            }
+            else if (runningQueue->back().leftBurstTime != 0 && runningQueue->back().leftBurstTime < timeQuantum)
+            {
+                currentTime += runningQueue->back().leftBurstTime;
+                runningQueue->back().leftBurstTime = 0;
+            }
+            else
+            {
+                ;
+            }
+
+            runningQueue->back().setCompletionTime(currentTime);
+        }
+
+        if (readyQueue->empty() && array->empty())
+        {
+            break;
+        }
     }
 }
 
 void Simulator::runCFS()
 {
+    cout << "\n Hey! Completely Fair Scheduler Here\n"
+         << endl;
+    cout << " Enter the Time Slice : ";
+    cin >> timeSlice;
+
+    MinHeap heap(array);
+    processNum = 1;
+
+    if (array->at(0).arrivalTime != 0)
+    {
+        currentTime = array->at(0).arrivalTime;
+    }
+
+    while (currentTime < simulationTime)
+    {
+        while (!array->empty())
+        {
+            if (array->at(0).arrivalTime <= currentTime)
+            {
+                readyQueue->push_back(array->at(0));
+                heap.pop();
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        // if (!runningQueue->empty())
+        // {
+        //     if (runningQueue->back().leftBurstTime != 0)
+        //     {
+        //         readyQueue->push_back(runningQueue->back());
+        //         runningQueue->erase(runningQueue->end());
+        //     }
+        // }
+
+        sch->cfs(runningQueue);
+
+        // if (!runningQueue->empty())
+        // {
+        //     if (runningQueue->back().leftBurstTime >= timeQuantum)
+        //     {
+        //         currentTime += timeQuantum;
+        //         runningQueue->back().leftBurstTime -= timeQuantum;
+        //     }
+        //     else if (runningQueue->back().leftBurstTime != 0 && runningQueue->back().leftBurstTime < timeQuantum)
+        //     {
+        //         currentTime += runningQueue->back().leftBurstTime;
+        //         runningQueue->back().leftBurstTime = 0;
+        //     }
+        //     else
+        //     {
+        //         ;
+        //     }
+        //     runningQueue->back().setCompletionTime(currentTime);
+        // }
+
+        if (readyQueue->empty() && array->empty())
+        {
+            break;
+        }
+    }
 }
 
 void callAlgo()
@@ -444,9 +503,9 @@ void callAlgo()
 
     f = sim.runningQueue;
 
-    std::ofstream output_file("output.txt");
+    std::ofstream output_file("processes.txt");
 
-    if(a == 1)
+    if (a == 1)
     {
         output_file << "\n\tFirst Come First Serve : \n\n";
     }
@@ -464,11 +523,11 @@ void callAlgo()
     for (int i = 0; i < f->size(); i++)
     {
         output_file << "\t" << f->at(i).processId << "\t"
-        << f->at(i).arrivalTime  << "\t" << f->at(i).burstTime << "\t" << f->at(i).completionTime
-        << "\t" << f->at(i).turnAroundTime << "\t" << f->at(i).waitingTime << "\t" << f->at(i).responseTime << "\n";
+                    << f->at(i).arrivalTime << "\t" << f->at(i).burstTime << "\t" << f->at(i).completionTime
+                    << "\t" << f->at(i).turnAroundTime << "\t" << f->at(i).waitingTime << "\t" << f->at(i).responseTime << "\n";
     }
 
-    output_file.close(); // Close the file
+    output_file.close();
 
     return;
 }
