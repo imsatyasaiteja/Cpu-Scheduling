@@ -3,6 +3,8 @@
 #include <vector>
 #include <time.h>
 #include <random>
+#include <string>
+#include <map>
 #define Infinity 999999
 int N;
 int simulationTime, currentTime;
@@ -20,8 +22,8 @@ private:
     int waitingTime;
     int responseTime = Infinity;
     int leftBurstTime;
-    int virtualRunTime;
-    int priority;
+    float virtualRunTime;
+    int niceness;
 
 public:
     Process()
@@ -38,8 +40,8 @@ public:
         arrivalTime = aTime;
         burstTime = bTime;
         leftBurstTime = bTime;
-        priority = 20 - nice;
-        virtualRunTime = priority;
+        niceness = nice;
+        virtualRunTime = nice;
     }
 
     void setCompletionTime(int cTime)
@@ -65,18 +67,19 @@ public:
     void print()
     {
         cout << "\n Process Id : " << processId << endl;
+        cout << " Nice : " << niceness << endl;
         cout << " Arrival Time : " << arrivalTime << " ms" << endl;
         cout << " Burst Time : " << burstTime << " ms" << endl;
         cout << " Completion Time : " << completionTime << " ms" << endl;
         cout << " Turn Around Time : " << turnAroundTime << " ms" << endl;
         cout << " Waiting Time : " << waitingTime << " ms" << endl;
         cout << " Response Time : " << responseTime << " ms" << endl;
-        cout << " Priority : " << priority << endl;
     }
 
     friend class Process_Creator;
     friend class Scheduler;
     friend class MinHeap;
+    friend bool compare(const Process &p1, const Process &p2);
     friend class Simulator;
     void friend callAlgo();
 };
@@ -137,7 +140,7 @@ private:
         int right = rightChild(parent);
         int smallest = parent;
 
-        if (left < arr->size() && arr->at(left).arrivalTime <= arr->at(smallest).arrivalTime)
+        if (left < arr->size() && arr->at(left).arrivalTime < arr->at(smallest).arrivalTime)
         {
             smallest = left;
         }
@@ -183,10 +186,10 @@ public:
     }
 };
 
-class RedBlackTree
+bool compare(const Process &p1, const Process &p2)
 {
-
-};
+    return p1.virtualRunTime < p2.virtualRunTime;
+}
 
 class Scheduler
 {
@@ -210,7 +213,7 @@ public:
 
     void fcfs(vector<Process> *runningQueue);
     void rr(vector<Process> *runningQueue);
-    void cfs(vector<Process> *runningQueue);
+    void cfs(Process p, vector<Process> *runningQueue);
 
     friend class RedBlackTree;
     friend class MinHeap;
@@ -240,9 +243,15 @@ void Scheduler::rr(vector<Process> *runningQueue)
     }
 }
 
-void Scheduler::cfs(vector<Process> *runningQueue)
+void Scheduler::cfs(Process p, vector<Process> *runningQueue)
 {
-    cout << "\n Hey CFS here" << endl;
+
+    runningQueue->push_back(p);
+
+    if (runningQueue->back().responseTime == Infinity)
+    {
+        runningQueue->back().setResponseTime(currentTime);
+    }
 }
 
 class Simulator
@@ -258,10 +267,10 @@ private:
 
     void CaptureValues()
     {
-        for (int i = 0; i < runningQueue->size(); i++)
+        for (int i = 0; i < array->size(); i++)
         {
-            runningQueue->at(i).setTurnAroundTime();
-            runningQueue->at(i).setWaitingTime();
+            array->at(i).setTurnAroundTime();
+            array->at(i).setWaitingTime();
         }
     }
 
@@ -276,9 +285,9 @@ public:
 
     void printProcesses()
     {
-        for (int i = 0; i < runningQueue->size(); i++)
+        for (int i = 0; i < array->size(); i++)
         {
-            runningQueue->at(i).print();
+            array->at(i).print();
         }
     }
 
@@ -296,6 +305,14 @@ public:
         {
             runCFS();
         }
+
+        for(int i=0; i<runningQueue->size(); i++)
+        {
+            array->push_back(runningQueue->at(i));
+        }
+
+        delete readyQueue;
+        delete runningQueue;
 
         CaptureValues();
         printProcesses();
@@ -315,34 +332,60 @@ void Simulator::runFCFS()
 
     MinHeap heap(array);
 
-    while (!array->empty())
+    if (heap.getMin().arrivalTime != 0)
     {
-        readyQueue->push_back(array->at(0));
-        heap.pop();
+        currentTime = heap.getMin().arrivalTime;
     }
+
+    ofstream status_file("status.txt");
+    status_file << "\n\tFirst Come First Serve: \n";
+    status_file << "\n\tTime Stamp\tProcess Id\tStatus\n\n";
 
     while (currentTime < simulationTime)
     {
-        sch->fcfs(runningQueue);
-
-        if (processNum == 0)
+        while (!array->empty())
         {
-            currentTime = runningQueue->at(processNum).arrivalTime;
+            if (heap.getMin().arrivalTime <= currentTime)
+            {
+                readyQueue->push_back(heap.getMin());
+                status_file << "\t" << readyQueue->back().arrivalTime << " ms"
+                            << "\t\t" << readyQueue->back().processId << "\t\t\tArrived"
+                            << "\n";
+                heap.pop();
+            }
+            else
+            {
+                break;
+            }
         }
 
-        runningQueue->at(processNum).setResponseTime(currentTime);
+        if (!runningQueue->empty())
+        {
+            status_file << "\t" << currentTime << " ms"
+                        << "\t\t" << runningQueue->back().processId << "\t\t\tExit"
+                        << "\n";
+        }
 
-        int endTime = currentTime + runningQueue->at(processNum).burstTime;
-        runningQueue->at(processNum).setCompletionTime(endTime);
-
-        currentTime = endTime;
-        processNum++;
-
-        if (readyQueue->empty())
+        if (array->empty() && readyQueue->empty())
         {
             break;
         }
+
+        sch->fcfs(runningQueue);
+
+        runningQueue->back().setResponseTime(currentTime);
+
+        status_file << "\t" << currentTime << " ms"
+                    << "\t\t" << runningQueue->back().processId << "\t\t\tRunning"
+                    << "\n";
+
+        int endTime = currentTime + runningQueue->back().burstTime;
+        runningQueue->back().setCompletionTime(endTime);
+
+        currentTime = endTime;
     }
+
+    status_file.close();
 }
 
 void Simulator::runRR()
@@ -354,18 +397,25 @@ void Simulator::runRR()
 
     MinHeap heap(array);
 
-    if (array->at(0).arrivalTime != 0)
+    if (heap.getMin().arrivalTime != 0)
     {
-        currentTime = array->at(0).arrivalTime;
+        currentTime = heap.getMin().arrivalTime;
     }
+
+    ofstream status_file("status.txt");
+    status_file << "\n\tRound Robin: \n";
+    status_file << "\n\tTime Stamp\tProcess Id\tStatus\n\n";
 
     while (currentTime < simulationTime)
     {
         while (!array->empty())
         {
-            if (array->at(0).arrivalTime <= currentTime)
+            if (heap.getMin().arrivalTime <= currentTime)
             {
-                readyQueue->push_back(array->at(0));
+                readyQueue->push_back(heap.getMin());
+                status_file << "\t" << readyQueue->back().arrivalTime << " ms"
+                            << "\t\t" << readyQueue->back().processId << "\t\t\tArrived"
+                            << "\n";
                 heap.pop();
             }
             else
@@ -374,13 +424,36 @@ void Simulator::runRR()
             }
         }
 
-        if (!runningQueue->empty() && runningQueue->back().leftBurstTime != 0)
+        if (!runningQueue->empty())
         {
-            readyQueue->push_back(runningQueue->back());
-            runningQueue->erase(runningQueue->end());
+            if (runningQueue->back().leftBurstTime != 0)
+            {
+                readyQueue->push_back(runningQueue->back());
+
+                status_file << "\t" << currentTime << " ms"
+                            << "\t\t" << runningQueue->back().processId << "\t\t\tArrived"
+                            << "\n";
+
+                runningQueue->erase(runningQueue->end());
+            }
+            else
+            {
+                status_file << "\t" << currentTime << " ms"
+                            << "\t\t" << runningQueue->back().processId << "\t\t\tExit"
+                            << "\n";
+            }
+        }
+
+        if (readyQueue->empty() && array->empty())
+        {
+            break;
         }
 
         sch->rr(runningQueue);
+
+        status_file << "\t" << currentTime << " ms"
+                    << "\t\t" << runningQueue->back().processId << "\t\t\tRunning"
+                    << "\n";
 
         if (!runningQueue->empty())
         {
@@ -401,12 +474,9 @@ void Simulator::runRR()
 
             runningQueue->back().setCompletionTime(currentTime);
         }
-
-        if (readyQueue->empty() && array->empty())
-        {
-            break;
-        }
     }
+
+    status_file.close();
 }
 
 void Simulator::runCFS()
@@ -417,11 +487,18 @@ void Simulator::runCFS()
     cin >> timeSlice;
 
     MinHeap heap(array);
-    processNum = 1;
+    map<Process, bool, decltype(&compare)> redBlackTree(&compare);
+    auto it = redBlackTree.begin();
 
-    if (array->at(0).arrivalTime != 0)
+    ofstream status_file("status.txt");
+    status_file << "\n\tCompletely Fair Scheduler: \n";
+    status_file << "\n\tTime Stamp\tProcess Id\tStatus\n\n";
+
+    processNum = 0;
+
+    if (heap.getMin().arrivalTime != 0)
     {
-        currentTime = array->at(0).arrivalTime;
+        currentTime = heap.getMin().arrivalTime;
     }
 
     while (currentTime < simulationTime)
@@ -430,7 +507,10 @@ void Simulator::runCFS()
         {
             if (array->at(0).arrivalTime <= currentTime)
             {
-                readyQueue->push_back(array->at(0));
+                redBlackTree[array->at(0)] = true;
+                status_file << "\t" << heap.getMin().arrivalTime << " ms"
+                            << "\t\t" << heap.getMin().processId << "\t\t\tArrived"
+                            << "\n";
                 heap.pop();
             }
             else
@@ -439,41 +519,68 @@ void Simulator::runCFS()
             }
         }
 
-        // if (!runningQueue->empty())
-        // {
-        //     if (runningQueue->back().leftBurstTime != 0)
-        //     {
-        //         readyQueue->push_back(runningQueue->back());
-        //         runningQueue->erase(runningQueue->end());
-        //     }
-        // }
+        if (!runningQueue->empty())
+        {
+            if (runningQueue->back().leftBurstTime != 0)
+            {
+                redBlackTree[runningQueue->back()] = true;
 
-        sch->cfs(runningQueue);
+                status_file << "\t" << currentTime << " ms"
+                            << "\t\t" << runningQueue->back().processId << "\t\t\tArrived"
+                            << "\n";
 
-        // if (!runningQueue->empty())
-        // {
-        //     if (runningQueue->back().leftBurstTime >= timeQuantum)
-        //     {
-        //         currentTime += timeQuantum;
-        //         runningQueue->back().leftBurstTime -= timeQuantum;
-        //     }
-        //     else if (runningQueue->back().leftBurstTime != 0 && runningQueue->back().leftBurstTime < timeQuantum)
-        //     {
-        //         currentTime += runningQueue->back().leftBurstTime;
-        //         runningQueue->back().leftBurstTime = 0;
-        //     }
-        //     else
-        //     {
-        //         ;
-        //     }
-        //     runningQueue->back().setCompletionTime(currentTime);
-        // }
+                runningQueue->erase(runningQueue->end());
+                processNum--;
+            }
+            else
+            {
+                status_file << "\t" << currentTime << " ms"
+                            << "\t\t" << runningQueue->back().processId << "\t\t\tExit"
+                            << "\n";
+            }
+        }
 
-        if (readyQueue->empty() && array->empty())
+        if (redBlackTree.empty() && array->empty())
         {
             break;
         }
+
+        it = redBlackTree.begin();
+        Process p = it->first;
+        redBlackTree.erase(it);
+
+        sch->cfs(p, runningQueue);
+        redBlackTree.erase(p);
+        processNum++;
+
+        status_file << "\t" << currentTime << " ms"
+                    << "\t\t" << runningQueue->back().processId << "\t\t\tRunning"
+                    << "\n";
+
+        if (!runningQueue->empty() && runningQueue->back().leftBurstTime >= timeSlice)
+        {
+            currentTime += timeSlice;
+            runningQueue->back().leftBurstTime -= timeSlice;
+        }
+        else if (runningQueue->back().leftBurstTime != 0 && runningQueue->back().leftBurstTime < timeSlice)
+        {
+            currentTime += runningQueue->back().leftBurstTime;
+            runningQueue->back().leftBurstTime = 0;
+        }
+        else
+        {
+            ;
+        }
+
+        int cpuTimeUsed = runningQueue->back().burstTime - runningQueue->back().leftBurstTime;
+
+        runningQueue->back().virtualRunTime += ((currentTime / processNum) * runningQueue->back().niceness * cpuTimeUsed);
+
+        runningQueue->back().setCompletionTime(currentTime);
+    
     }
+
+    status_file.close();
 }
 
 void callAlgo()
@@ -501,9 +608,9 @@ void callAlgo()
     Simulator sim(sch, a);
     sim.Run();
 
-    f = sim.runningQueue;
+    f = sim.array;
 
-    std::ofstream output_file("processes.txt");
+    ofstream output_file("processes.txt");
 
     if (a == 1)
     {
@@ -516,19 +623,32 @@ void callAlgo()
     else
     {
         output_file << "\n\tCompletely Fair Scheduler : \n\n";
+        output_file << "\tID\tAT\tBT\tCT\tTAT\tWT\tRT\t\tNICE\tVRT\n";
+
+        for (int i = 0; i < f->size(); i++)
+        {
+            output_file << "\t" << f->at(i).processId << "\t"
+                        << f->at(i).arrivalTime << "\t" << f->at(i).burstTime << "\t" << f->at(i).completionTime
+                        << "\t" << f->at(i).turnAroundTime << "\t" << f->at(i).waitingTime << "\t" << f->at(i).responseTime 
+                        << "\t\t" << f->at(i).niceness << "\t\t" << f->at(i).virtualRunTime << "\n";
+        }
     }
 
-    output_file << "\tID\tAT\tBT\tCT\tTAT\tWT\tRT\n";
-
-    for (int i = 0; i < f->size(); i++)
+    if (a == 1 || a == 2)
     {
-        output_file << "\t" << f->at(i).processId << "\t"
-                    << f->at(i).arrivalTime << "\t" << f->at(i).burstTime << "\t" << f->at(i).completionTime
-                    << "\t" << f->at(i).turnAroundTime << "\t" << f->at(i).waitingTime << "\t" << f->at(i).responseTime << "\n";
+        output_file << "\tID\tAT\tBT\tCT\tTAT\tWT\tRT\n";
+
+        for (int i = 0; i < f->size(); i++)
+        {
+            output_file << "\t" << f->at(i).processId << "\t"
+                        << f->at(i).arrivalTime << "\t" << f->at(i).burstTime << "\t" << f->at(i).completionTime
+                        << "\t" << f->at(i).turnAroundTime << "\t" << f->at(i).waitingTime << "\t" << f->at(i).responseTime << "\n";
+        }
     }
 
     output_file.close();
 
+    delete f;
     return;
 }
 
