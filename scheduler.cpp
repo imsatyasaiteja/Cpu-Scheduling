@@ -23,7 +23,8 @@ private:
     int responseTime = Infinity;
     int leftBurstTime;
     float virtualRunTime;
-    int niceness;
+    float timeSlice;
+    int staticPriority;
 
 public:
     Process()
@@ -40,8 +41,9 @@ public:
         arrivalTime = aTime;
         burstTime = bTime;
         leftBurstTime = bTime;
-        niceness = nice;
+        staticPriority = 120 + nice;
         virtualRunTime = nice;
+        timeSlice = 0;
     }
 
     void setCompletionTime(int cTime)
@@ -67,7 +69,7 @@ public:
     void print()
     {
         cout << "\n Process Id : " << processId << endl;
-        cout << " Nice : " << niceness << endl;
+        cout << " Nice : " << staticPriority - 120 << endl;
         cout << " Arrival Time : " << arrivalTime << " ms" << endl;
         cout << " Burst Time : " << burstTime << " ms" << endl;
         cout << " Completion Time : " << completionTime << " ms" << endl;
@@ -198,14 +200,6 @@ private:
     vector<Process> *array;
 
 public:
-    Scheduler()
-    {
-    }
-
-    ~Scheduler()
-    {
-    }
-
     Scheduler(Process_Creator &obj)
     {
         array = obj.array;
@@ -261,9 +255,7 @@ private:
     vector<Process> *runningQueue = new vector<Process>();
     vector<Process> *readyQueue;
     Scheduler *sch;
-    int processNum;
-    int timeQuantum, timeSlice;
-    int choice;
+    int timeQuantum, choice;
 
     void CaptureValues()
     {
@@ -469,7 +461,7 @@ void Simulator::runRR()
             }
             else
             {
-                ;
+                currentTime += 0;
             }
 
             runningQueue->back().setCompletionTime(currentTime);
@@ -483,8 +475,6 @@ void Simulator::runCFS()
 {
     cout << "\n Hey! Completely Fair Scheduler Here\n"
          << endl;
-    cout << " Enter the Time Slice : ";
-    cin >> timeSlice;
 
     MinHeap heap(array);
     map<Process, bool, decltype(&compare)> redBlackTree(&compare);
@@ -493,8 +483,6 @@ void Simulator::runCFS()
     ofstream status_file("status.txt");
     status_file << "\n\tCompletely Fair Scheduler: \n";
     status_file << "\n\tTime Stamp\tProcess Id\tStatus\n\n";
-
-    processNum = 0;
 
     if (heap.getMin().arrivalTime != 0)
     {
@@ -530,7 +518,6 @@ void Simulator::runCFS()
                             << "\n";
 
                 runningQueue->erase(runningQueue->end());
-                processNum--;
             }
             else
             {
@@ -551,30 +538,36 @@ void Simulator::runCFS()
 
         sch->cfs(p, runningQueue);
         redBlackTree.erase(p);
-        processNum++;
 
         status_file << "\t" << currentTime << " ms"
                     << "\t\t" << runningQueue->back().processId << "\t\t\tRunning"
                     << "\n";
 
-        if (!runningQueue->empty() && runningQueue->back().leftBurstTime >= timeSlice)
+        if(runningQueue->back().staticPriority < 120)
         {
-            currentTime += timeSlice;
-            runningQueue->back().leftBurstTime -= timeSlice;
+            runningQueue->back().timeSlice += 4;
         }
-        else if (runningQueue->back().leftBurstTime != 0 && runningQueue->back().leftBurstTime < timeSlice)
+        else
+        {
+            runningQueue->back().timeSlice += 1;
+        }
+
+        runningQueue->back().virtualRunTime += (runningQueue->back().timeSlice * (runningQueue->back().staticPriority - 120));
+        
+        if (!runningQueue->empty() && runningQueue->back().leftBurstTime >= runningQueue->back().timeSlice)
+        {
+            currentTime += runningQueue->back().timeSlice;
+            runningQueue->back().leftBurstTime -= runningQueue->back().timeSlice;
+        }
+        else if (runningQueue->back().leftBurstTime != 0 && runningQueue->back().leftBurstTime < runningQueue->back().timeSlice)
         {
             currentTime += runningQueue->back().leftBurstTime;
             runningQueue->back().leftBurstTime = 0;
         }
         else
         {
-            ;
+            currentTime += 0;
         }
-
-        int cpuTimeUsed = runningQueue->back().burstTime - runningQueue->back().leftBurstTime;
-
-        runningQueue->back().virtualRunTime += ((currentTime / processNum) * runningQueue->back().niceness * cpuTimeUsed);
 
         runningQueue->back().setCompletionTime(currentTime);
     
@@ -630,7 +623,7 @@ void callAlgo()
             output_file << "\t" << f->at(i).processId << "\t"
                         << f->at(i).arrivalTime << "\t" << f->at(i).burstTime << "\t" << f->at(i).completionTime
                         << "\t" << f->at(i).turnAroundTime << "\t" << f->at(i).waitingTime << "\t" << f->at(i).responseTime 
-                        << "\t\t" << f->at(i).niceness << "\t\t" << f->at(i).virtualRunTime << "\n";
+                        << "\t\t" << f->at(i).staticPriority - 120 << "\t\t" << f->at(i).virtualRunTime << "\n";
         }
     }
 
