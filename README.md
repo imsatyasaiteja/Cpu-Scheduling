@@ -93,3 +93,10 @@ object sim and runs the algorithm as per user's choice and sends the output to p
 
 Main function takes the Number of processes and simulation time in seconds.
    
+References : 
+
+For RR :
+https://www.youtube.com/watch?v=TxjIlNYRZ5M&t=421s
+
+For CFS :
+https://www.cse.iitd.ac.in/~rijurekha/col788/scheduling1.pdf  and  https://www.youtube.com/watch?v=MkJfuI5_hjc
