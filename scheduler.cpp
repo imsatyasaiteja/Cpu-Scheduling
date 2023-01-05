@@ -1,13 +1,14 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
-#include <time.h>
 #include <random>
 #include <string>
 #include <map>
 #define Infinity 999999
+
 int N;
-int simulationTime, currentTime;
+float simulationTime;
+int currentTime;
 
 using namespace std;
 
@@ -22,8 +23,8 @@ private:
     int waitingTime;
     int responseTime = Infinity;
     int leftBurstTime;
-    float virtualRunTime;
-    float timeSlice;
+    int virtualRunTime;
+    int timeSlice;
     int staticPriority;
 
 public:
@@ -42,8 +43,24 @@ public:
         burstTime = bTime;
         leftBurstTime = bTime;
         staticPriority = 120 + nice;
-        virtualRunTime = nice;
-        timeSlice = 0;
+        virtualRunTime = nice + aTime + bTime + pid;
+        
+        if (staticPriority < 110 && staticPriority >= 100)
+        {
+            timeSlice = 4;
+        }
+        else if (staticPriority < 120 && staticPriority >= 110)
+        {
+            timeSlice = 3;
+        }
+        else if (staticPriority < 130 && staticPriority >= 120)
+        {
+            timeSlice = 2;
+        }
+        else
+        {
+            timeSlice = 1;
+        }
     }
 
     void setCompletionTime(int cTime)
@@ -99,26 +116,15 @@ public:
 
         for (int i = 0; i < N; i++)
         {
-            int aTime = rand() % 10;
-            int bTime;
-
-            while (1)
-            {
-                bTime = rand() % 10;
-
-                if (bTime != 0)
-                {
-                    break;
-                }
-            }
-
-            int nice;
-
             random_device rd;
             mt19937 gen(rd());
+            uniform_int_distribution<int> distArrTime(0, 9);
+            uniform_int_distribution<int> distBurstTime(1, 9);
             uniform_int_distribution<int> distNice(-20, 19);
 
-            nice = distNice(gen);
+            int aTime = distArrTime(gen);
+            int bTime = distBurstTime(gen);
+            int nice = distNice(gen);
 
             array->at(i) = Process(i, aTime, bTime, nice);
         }
@@ -146,6 +152,17 @@ private:
         {
             smallest = left;
         }
+        else if (left < arr->size() && arr->at(left).arrivalTime == arr->at(smallest).arrivalTime)
+        {
+            if (arr->at(left).processId < arr->at(smallest).processId)
+            {
+                smallest = left;
+            }
+            else
+            {
+                smallest = parent;
+            }
+        }
         else
         {
             smallest = parent;
@@ -154,6 +171,14 @@ private:
         if (right < arr->size() && arr->at(right).arrivalTime < arr->at(smallest).arrivalTime)
         {
             smallest = right;
+        }
+
+        if (right < arr->size() && arr->at(right).arrivalTime == arr->at(smallest).arrivalTime)
+        {
+            if (arr->at(right).processId < arr->at(smallest).processId)
+            {
+                smallest = right;
+            }
         }
 
         if (smallest != parent)
@@ -190,7 +215,18 @@ public:
 
 bool compare(const Process &p1, const Process &p2)
 {
-    return p1.virtualRunTime < p2.virtualRunTime;
+    if(p1.virtualRunTime != p2.virtualRunTime)
+    {
+        return p1.virtualRunTime < p2.virtualRunTime;
+    }
+    
+    if(p1.staticPriority != p2.staticPriority)
+    {
+        return p1.staticPriority < p2.staticPriority;
+    }
+
+    return p1.arrivalTime < p2.arrivalTime;
+    
 }
 
 class Scheduler
@@ -216,11 +252,8 @@ public:
 
 void Scheduler::fcfs(vector<Process> *runningQueue)
 {
-    MinHeap min(readyQueue);
-
-    runningQueue->push_back(min.getMin());
-
-    min.pop();
+    runningQueue->push_back(readyQueue->at(0));
+    readyQueue->erase(readyQueue->begin());
 }
 
 void Scheduler::rr(vector<Process> *runningQueue)
@@ -237,10 +270,9 @@ void Scheduler::rr(vector<Process> *runningQueue)
     }
 }
 
-void Scheduler::cfs(Process p, vector<Process> *runningQueue)
+void Scheduler::cfs(Process Q, vector<Process> *runningQueue)
 {
-
-    runningQueue->push_back(p);
+    runningQueue->push_back(Q);
 
     if (runningQueue->back().responseTime == Infinity)
     {
@@ -284,7 +316,7 @@ public:
     }
 
     void Run()
-    {
+    {    
         if (choice == 1)
         {
             runFCFS();
@@ -298,7 +330,7 @@ public:
             runCFS();
         }
 
-        for(int i=0; i<runningQueue->size(); i++)
+        for (int i = 0; i < runningQueue->size(); i++)
         {
             array->push_back(runningQueue->at(i));
         }
@@ -308,6 +340,7 @@ public:
 
         CaptureValues();
         printProcesses();
+        cout << "\n";
     }
 
     void runFCFS();
@@ -493,9 +526,9 @@ void Simulator::runCFS()
     {
         while (!array->empty())
         {
-            if (array->at(0).arrivalTime <= currentTime)
+            if (heap.getMin().arrivalTime <= currentTime)
             {
-                redBlackTree[array->at(0)] = true;
+                redBlackTree[heap.getMin()] = true;
                 status_file << "\t" << heap.getMin().arrivalTime << " ms"
                             << "\t\t" << heap.getMin().processId << "\t\t\tArrived"
                             << "\n";
@@ -533,44 +566,38 @@ void Simulator::runCFS()
         }
 
         it = redBlackTree.begin();
-        Process p = it->first;
-        redBlackTree.erase(it);
+        Process Q = it->first;
 
-        sch->cfs(p, runningQueue);
-        redBlackTree.erase(p);
+        sch->cfs(Q, runningQueue);
+
+        redBlackTree.erase(it);
 
         status_file << "\t" << currentTime << " ms"
                     << "\t\t" << runningQueue->back().processId << "\t\t\tRunning"
                     << "\n";
 
-        if(runningQueue->back().staticPriority < 120)
+        if (!runningQueue->empty())
         {
-            runningQueue->back().timeSlice += 4;
-        }
-        else
-        {
-            runningQueue->back().timeSlice += 1;
+            if (runningQueue->back().leftBurstTime >= runningQueue->back().timeSlice)
+            {
+                currentTime += runningQueue->back().timeSlice;
+                runningQueue->back().leftBurstTime -= runningQueue->back().timeSlice;
+            }
+            else if (runningQueue->back().leftBurstTime != 0 && runningQueue->back().leftBurstTime < runningQueue->back().timeSlice)
+            {
+                currentTime += runningQueue->back().leftBurstTime;
+                runningQueue->back().leftBurstTime = 0;
+            }
+            else
+            {
+                currentTime += 0;
+            }
         }
 
-        runningQueue->back().virtualRunTime += (runningQueue->back().timeSlice * (runningQueue->back().staticPriority - 120));
-        
-        if (!runningQueue->empty() && runningQueue->back().leftBurstTime >= runningQueue->back().timeSlice)
-        {
-            currentTime += runningQueue->back().timeSlice;
-            runningQueue->back().leftBurstTime -= runningQueue->back().timeSlice;
-        }
-        else if (runningQueue->back().leftBurstTime != 0 && runningQueue->back().leftBurstTime < runningQueue->back().timeSlice)
-        {
-            currentTime += runningQueue->back().leftBurstTime;
-            runningQueue->back().leftBurstTime = 0;
-        }
-        else
-        {
-            currentTime += 0;
-        }
+        int cpuTime = runningQueue->back().burstTime - runningQueue->back().leftBurstTime;
+        runningQueue->back().virtualRunTime += (cpuTime * runningQueue->back().staticPriority);
 
         runningQueue->back().setCompletionTime(currentTime);
-    
     }
 
     status_file.close();
@@ -592,7 +619,6 @@ void callAlgo()
     if (!(a == 1 || a == 2 || a == 3))
     {
         cout << "\n Error! invalid input" << endl;
-        callAlgo();
         return;
     }
 
@@ -622,7 +648,7 @@ void callAlgo()
         {
             output_file << "\t" << f->at(i).processId << "\t"
                         << f->at(i).arrivalTime << "\t" << f->at(i).burstTime << "\t" << f->at(i).completionTime
-                        << "\t" << f->at(i).turnAroundTime << "\t" << f->at(i).waitingTime << "\t" << f->at(i).responseTime 
+                        << "\t" << f->at(i).turnAroundTime << "\t" << f->at(i).waitingTime << "\t" << f->at(i).responseTime
                         << "\t\t" << f->at(i).staticPriority - 120 << "\t\t" << f->at(i).virtualRunTime << "\n";
         }
     }
