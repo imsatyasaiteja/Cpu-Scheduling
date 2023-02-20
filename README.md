@@ -2,7 +2,7 @@
 
 A C++ Program that can create an array of processes, assign random arrival time and burst time, perform Cpu Scheduling based on the user input, and finally output a text file that contains the completion time, turn around time, waiting time and response time for the processes.
 
-## Code Explaination
+## Code Explanation
 
 - A class Process is declared. This contains the Process Id, Arrival Time, Burst Time, Completion Time, 
 Turn Around Time, Waiting Time, Response Time, Virtual Run Time, Time Slice, Static Priority. It has 
